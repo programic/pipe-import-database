@@ -1,4 +1,4 @@
-Through this Bitbucket Pipe, you can copy a compressed (gzip) MySQL dump from AWS S3 to a Digital Ocean MySQL database.
+Through this Bitbucket Pipe, you can restore a compressed (gzip) MySQL dump from AWS S3 to a Digital Ocean MySQL database.
 
 # Bitbucket pipeline example
 The example below shows how to use the Bitbucket pipe in your bitbucket-pipelines.yml.
