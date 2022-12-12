@@ -18,6 +18,8 @@ source "$(dirname "${0}")/common.sh"
 
 import_mysql() {
 
+  info "Searching for a backup..."
+
   s3_key_latest=""
   s3_bucket_slices=(${S3_BUCKET//\// })
 
@@ -40,14 +42,22 @@ import_mysql() {
         fail "No backup found"
   fi
 
-  success "Found latest backup: \"${s3_key_latest}\""
+  success "Found backup: \"${s3_key_latest}\""
   
+  info "Download and extract the backup..."
+
   s3_object_compressed="$(mktemp -u).sql.gz"
   s3_object="$(mktemp -u).sql"
 
   aws s3api get-object --bucket ${s3_bucket_slices[0]} --key "${s3_key_latest}" ${s3_object_compressed} > /dev/null
   gunzip -c ${s3_object_compressed} > ${s3_object}
-  success "Downloaded and extracted the latest backup"
+  # mysqldump set DEFINER=user@host by default which prevents the database from being imported by another user. So we need to remove this option from the file.
+  # mysqldump does not yet provide a way to not create the DEFINER option. 
+  sed -i -e 's/DEFINER=`[^`]*`@`[^`]*`//g' ${s3_object}
+
+  success "Backup is prepared to be uploaded"
+
+  info "Get the public ip address to whitelist it in the database firewall..."
 
   # Get public ip address of this container
   public_ip=$(curl -s ipinfo.io/ip)
@@ -55,10 +65,12 @@ import_mysql() {
   # Add public id address to firewall and get the created firewall uuids, so we can remove them later
   firewall_info=$(doctl databases firewalls append "${DIGITALOCEAN_DATABASE_ID}" --rule "ip_addr:${public_ip}" --output=json)
   firewall_uuids=$(echo "${firewall_info}" | jq -r ".[] | select(.type==\"ip_addr\") | select(.value==\"${public_ip}\") | .uuid")
-  success "Setup the database firewall to allow the public ip address \"${public_ip}\""
+
+  success "Ip address \"${public_ip}\" is whitelisted in the database firewall"
+
+  info "Ok, let's import the backup..."
 
   db_info=$(doctl databases connection "${DIGITALOCEAN_DATABASE_ID}" --output=json)
-  success "Get host and port of the database"
   
   mysql \
     --host "$(echo "${db_info}" | jq -r '.host')" \
@@ -69,11 +81,13 @@ import_mysql() {
   
   success "The backup has been successfully imported"
 
+  info "Cleanup the public ip address from the firewall..."
+
   for firewall_uuid in ${firewall_uuids}; do
     doctl databases firewalls remove "${DIGITALOCEAN_DATABASE_ID}" --uuid "${firewall_uuid}" > /dev/null
   done
 
-  success "Cleaned up the public ip address from the firewall"
+  success "All done, bye!"
 }
 
 import_mysql

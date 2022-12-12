@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
 docker login
-docker build -t programic/pipe-import-database:latest .
+docker build --platform linux/amd64 -t programic/pipe-import-database:latest .
 docker push programic/pipe-import-database:latest
